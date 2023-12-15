@@ -1,0 +1,208 @@
+---
+title: "DOMsynthesis_NMSwork"
+output: html_document
+date: "2023-10-24"
+---
+## Set R script for NMS plots for the DOM synthesis workshop
+### Krista Longnecker, 27 October 2023
+#### to do - set to more reasonable values to run multiple times...but need a computer that is not low on juice
+
+
+```{r settingTheState, include = FALSE}
+library(vegan)
+library(ggplot2)
+library(flashClust) 
+library(xlsx) #will require 64 bit java, if issues, check that first
+library(data.table) #use to move bw lists/data.frames 
+library(rlang)
+
+options(stringsAsFactors = FALSE)
+
+rm(list=ls.str())
+```
+
+```{r FileNames, eval = TRUE}
+#setup file names ahead of time, will be used to save and export data
+NameOfFile = 'DOMsynthesis_workingNMS.2023.10.27.Rimage'
+#WriteCSVname = 'someDataFile.csv' #might not need this
+
+```
+
+
+```{r readInFiles, eval=TRUE}
+#metadata - working in one folder for now
+#wDir = "C:/Users/klongnecker/Documents/GitHub/DOMsynthesis/_data_from/"
+
+fName = 'Summary_Andrew_crosstab_wihout_iso_na.csv'
+fName_metadata <- 'DOM_Synthesis_Data.Agg_WA_Meta.csv'
+  
+#read in the data files, but shut down the errors
+mData <- read.csv(fName,header=TRUE)
+metaData <- read.csv(fName_metadata,header = TRUE)
+rm(fName,fName_metadata)
+
+#These two files have different number of rows. We have (1) samples with no metadata and (2) metadata with no samples. First find the places that do not match and then remove the rows with no metaData as they will not be helpful for my purposes; sadly this involves more steps 
+
+#variables to merge are here:
+#mData$variable #use this to match (ends with CSV)
+#metaData$Sample #nothing after sample name
+#metaData$coreMSname #nothing after sample name
+
+#easiest is probably to add csv to each metaData row
+for (idx in 1:dim(metaData)[1]) {
+  one <- metaData$Sample[idx]
+  metaData$nameWithCSV[idx] <- paste0(one,".csv")
+  rm(one)
+}
+rm(idx)
+
+keepIdx <- data.frame()
+#probably a better way to do this, but I need the index
+for (idx in 1:dim(metaData)[1]) {
+  kI <- which(metaData$nameWithCSV[idx] == mData$variable)
+  keepIdx <- append(keepIdx,kI)
+  rm(kI)
+}
+rm(idx)
+
+#only keep the rows in metaData with actual data
+#check this later - on a plane and possibly not fully thinking right
+useIdx <- as.numeric(keepIdx)
+metaData <- metaData[useIdx,]
+mData <- mData[useIdx,]
+rm(keepIdx,useIdx)
+
+
+#check again that mData and metaData match
+keepIdx <- data.frame()
+for (idx in 1:dim(mData)[1]) {
+  kI <- which(mData$variable[idx] == metaData$nameWithCSV)
+  keepIdx <- append(keepIdx,kI)
+  rm(kI)
+}
+rm(idx)
+
+#only keep the rows in mData with matching metaData data
+useIdx <- as.numeric(keepIdx)
+mData <- mData[useIdx,]
+metaData <- metaData[useIdx,]
+rm(keepIdx,useIdx)
+
+
+```
+
+
+```{r setupData,eval=TRUE}
+#now do an NMS on the derived variables in the metadata file. My question is how all the samples sort out based on an oridination on the derived variables (can compare later to the ordination on the features themselves)
+
+idxRows <- c(1:dim(mData)[1]) #how many rows...
+cols <- colnames(mData)
+idxCol <- cols
+
+#need unlist because the first bit produces a list
+useData <- as.numeric(unlist(mData[idxRows,idxCol]))
+
+tData <- mData[idxRows,idxCol]
+useData <- setDT(tData,keep.rownames=TRUE)
+rm(tData)
+```
+
+```{r calcDistance,eval=TRUE}
+#Have some options for the distance matrix:
+#data pre-processing; #requires the vegan package
+dataRel = decostand(x=useData,method = "pa",na.rm=TRUE)
+useDistance = "bray" #vegan will want this again later, so define here
+calcDistMat = vegdist(dataRel,method = useDistance,na.rm=TRUE) 
+
+sampleTree = flashClust(calcDistMat,method = "ward")
+par(cex=1.5)
+par(mar = c(2,2,2,3))
+plot(as.dendrogram(sampleTree),horiz=T)
+
+```
+
+
+```{r calcNMS, include = FALSE}
+# setup NMS code here in R, using my general path from MATLAB
+# Remember to change the settings to something that actually does multiple runs
+output_NMS <-
+  metaMDS(calcDistMat,
+          distance = useDistance,
+          k = 2,
+          maxit = 2, 
+          trymax = 2,
+          wascores = TRUE)
+
+```
+
+```{r calcGOF, eval = TRUE, include=FALSE}
+#turn this back on later, off for now as I am just working on the mechanics of NMS in R
+
+# Shepards test/goodness of fit
+goodness(output_NMS) # Produces a results of test statistics for goodness of fit for each point
+
+stressplot(output_NMS) # Produces a Shepards diagram
+
+```
+
+```{r plotNMS, eval = TRUE}
+
+# Plotting points in ordination space
+plot(output_NMS, "sites")   # Produces scatter plot 
+
+```
+
+
+```{r doMantel, eval = TRUE}
+#need to calculate the distance between the points from the ordination itself
+#extract NMDS scores (x and y coordinates)
+data.scores = as.data.frame(scores(output_NMS))
+
+#calculate data.scores as a Euclidean distance
+distanceXY = dist(data.scores, method = "euclidean")
+cf = mantel(calcDistMat,distanceXY,method = "spearman",permutations = 9, na.rm = TRUE)
+r2_overall <- cf$statistic * cf$statistic
+
+distanceXY = dist(data.scores[,1], method = "euclidean")
+cfMatrices = mantel(calcDistMat,distanceXY,method = "spearman", permutations = 9, na.rm = TRUE)
+r2_axis1 <- cfMatrices$statistic * cfMatrices$statistic
+r2_axis1
+
+distanceXY = dist(data.scores[,2], method = "euclidean")
+cfMatrices = mantel(calcDistMat,distanceXY,method = "spearman", permutations = 9, na.rm = TRUE)
+r2_axis2 <- cfMatrices$statistic * cfMatrices$statistic
+r2_axis2
+
+```
+
+```{r makePrettyFigure,eval = TRUE}
+#I want to make NMS plots with color-coded points for variables. Easiest to start will be 'type' as there are only a few types
+
+#this will involve ggplot, which I am not great at implementing
+df <- as.data.frame(output_NMS$points)
+oneVal <- metaData$type
+
+#simplest possible case - x/y scatter, allpoints are black
+p <- ggplot(df,aes(MDS1,MDS2))
+p + geom_point()
+
+#now, try again, can I do this and color the points by ecosystem ('type')
+p <- ggplot(df,aes(MDS1,MDS2))
+p + geom_point(aes(colour = factor(metaData$type)))
+
+#can make this pretty later (shapes, size, get rid of the grid and the like)
+```
+
+
+
+```{r saveStuff, eval = TRUE}
+
+#to do later: 
+#biplots and the like
+
+#I find it nice to have the Rimage file to open again later
+save.image(NameOfFile)
+
+```
+
+
