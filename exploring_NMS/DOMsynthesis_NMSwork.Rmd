@@ -5,7 +5,7 @@ date: "2023-10-24"
 ---
 ## Set R script for NMS plots for the DOM synthesis workshop
 ### Krista Longnecker, 27 October 2023
-#### to do - set to more reasonable values to run multiple times...but need a computer that is not low on juice
+#### to do - set to more reasonable values to run multiple times
 
 
 ```{r settingTheState, include = FALSE}
@@ -66,7 +66,7 @@ for (idx in 1:dim(metaData)[1]) {
 rm(idx)
 
 #only keep the rows in metaData with actual data
-#check this later - on a plane and possibly not fully thinking right
+#check this later - need to get this right
 useIdx <- as.numeric(keepIdx)
 metaData <- metaData[useIdx,]
 mData <- mData[useIdx,]
@@ -123,7 +123,8 @@ plot(as.dendrogram(sampleTree),horiz=T)
 
 
 ```{r calcNMS, include = FALSE}
-# setup NMS code here in R, using my general path from MATLAB
+# setup NMS code here in R, using my general set of steps originally written in
+# MATLAB
 # Remember to change the settings to something that actually does multiple runs
 output_NMS <-
   metaMDS(calcDistMat,
